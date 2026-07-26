@@ -1,0 +1,29 @@
+const userModel = require('../models/userModel');
+const authService = require('../services/authService');
+const savedNoteModel = require('../models/savedNoteModel');
+const viewHistoryModel = require('../models/viewHistoryModel');
+const asyncHandler = require('../middleware/asyncHandler');
+const ApiResponse = require('../utils/ApiResponse');
+
+module.exports = {
+  getMe: asyncHandler(async function (req, res) {
+    const user = await userModel.findPublicById(req.user.id);
+    const savedCount = await savedNoteModel.countByUser(req.user.id);
+    const recentViews = await viewHistoryModel.findByUser(req.user.id, 5);
+    return ApiResponse.ok(res, { user: user, savedCount: savedCount, recentViews: recentViews });
+  }),
+
+  updateMe: asyncHandler(async function (req, res) {
+    const updated = await userModel.updateProfile(req.user.id, {
+      name: req.body.name,
+      course: req.body.course,
+      currentYear: req.body.currentYear
+    });
+    return ApiResponse.ok(res, updated);
+  }),
+
+  changePassword: asyncHandler(async function (req, res) {
+    await authService.changePassword(req.user.id, req.body.currentPassword, req.body.newPassword);
+    return ApiResponse.ok(res, { updated: true });
+  })
+};
