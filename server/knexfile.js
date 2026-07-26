@@ -22,7 +22,14 @@ const base = {
 module.exports = {
   development: base,
   production: Object.assign({}, base, {
-    connection: process.env.DATABASE_URL || base.connection,
-    pool: { min: 2, max: 20 }
-  })
+    connection: process.env.DATABASE_URL
+      ? {
+          connectionString: process.env.DATABASE_URL,
+          ssl: {
+            rejectUnauthorized: false,
+          },
+        }
+      : base.connection,
+    pool: { min: 2, max: 20 },
+  }),
 };
