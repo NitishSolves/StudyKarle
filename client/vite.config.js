@@ -9,6 +9,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: false
+    sourcemap: false,
+    // pdfjs-dist (used for in-app PDF rendering) relies on top-level await,
+    // which needs a slightly newer JS target than Vite 2's default.
+    target: 'es2022'
   }
 });

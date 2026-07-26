@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import AppShell from '../components/layout/AppShell';
-import PdfPreview from '../components/notes/PdfPreview';
+import Spinner from '../components/common/Spinner';
 import Breadcrumbs from '../components/common/Breadcrumbs';
 import Button from '../components/common/Button';
 import Skeleton from '../components/common/Skeleton';
@@ -13,6 +13,12 @@ import useFetch from '../hooks/useFetch';
 import { fetchNote, getDownloadUrl } from '../api/notesApi';
 import { saveNote, unsaveNote } from '../api/savedApi';
 import { useToast } from '../context/ToastContext';
+
+// Loaded lazily because it pulls in pdf.js, which should only be downloaded
+// by users who actually open a note preview, not on every page of the app.
+const PdfPreview = lazy(function () {
+  return import('../components/notes/PdfPreview');
+});
 
 export default function NotePreviewPage() {
   const { noteId } = useParams();
@@ -107,7 +113,15 @@ export default function NotePreviewPage() {
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
             <div className="xl:col-span-8">
-              <PdfPreview noteId={note.id} title={note.title} />
+              <Suspense
+                fallback={
+                  <div className="relative bg-surface-high rounded-xl overflow-hidden border border-border-subtle h-[70vh] lg:h-[750px] flex items-center justify-center">
+                    <Spinner size="lg" label="Loading preview..." />
+                  </div>
+                }
+              >
+                <PdfPreview noteId={note.id} title={note.title} />
+              </Suspense>
             </div>
 
             <div className="xl:col-span-4 space-y-gutter">

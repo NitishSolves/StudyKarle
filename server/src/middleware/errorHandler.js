@@ -9,6 +9,14 @@ module.exports = function errorHandler(err, req, res, next) {
     logger.error('Unhandled error on ' + req.method + ' ' + req.originalUrl, err);
   }
 
+  // If a response has already started (e.g. a PDF stream that failed
+  // partway through), we can't send a fresh JSON body on top of it. Express
+  // requires delegating to its default handler in this case, which just
+  // closes the connection instead of throwing ERR_HTTP_HEADERS_SENT.
+  if (res.headersSent) {
+    return next(err);
+  }
+
   const body = {
     success: false,
     message: isOperational ? err.message : 'Something went wrong. Please try again.'

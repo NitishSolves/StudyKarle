@@ -13,7 +13,13 @@ module.exports = {
   port: Number(process.env.PORT) || 5000,
   clientUrl: process.env.CLIENT_URL || "http://localhost:5173",
 
-  jwtSecret: required("JWT_SECRET", "dev_secret_change_me"),
+  // Only fall back to a convenience default outside production. In
+  // production, a missing JWT_SECRET must crash the server on boot rather
+  // than silently sign tokens with a value anyone can read in this file.
+  jwtSecret: required(
+    "JWT_SECRET",
+    process.env.NODE_ENV === "production" ? undefined : "dev_secret_change_me"
+  ),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
   cookieName: process.env.COOKIE_NAME || "studykarle_token",
 

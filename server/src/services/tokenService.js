@@ -13,23 +13,24 @@ function cookieMaxAgeMs() {
   return 7 * 24 * 60 * 60 * 1000;
 }
 
-function setAuthCookie(res, token) {
-  res.cookie(env.cookieName, token, {
-    httpOnly: true,
-    secure: env.true,
-    sameSite: "lax",
-    maxAge: cookieMaxAgeMs(),
-    path: '/'
-  });
-}
-
-function clearAuthCookie(res) {
-  res.clearCookie(env.cookieName, {
+// Shared between set and clear so the cookie's attributes always match - a
+// clearCookie call whose attributes differ from how the cookie was
+// originally set (secure/sameSite/path) can silently fail to remove it.
+function authCookieOptions() {
+  return {
     httpOnly: true,
     secure: env.isProduction,
     sameSite: env.isProduction ? 'none' : 'lax',
     path: '/'
-  });
+  };
+}
+
+function setAuthCookie(res, token) {
+  res.cookie(env.cookieName, token, Object.assign({ maxAge: cookieMaxAgeMs() }, authCookieOptions()));
+}
+
+function clearAuthCookie(res) {
+  res.clearCookie(env.cookieName, authCookieOptions());
 }
 
 module.exports = {

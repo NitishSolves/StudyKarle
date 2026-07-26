@@ -14,11 +14,30 @@ axiosClient.interceptors.response.use(
   function (response) {
     return response;
   },
-  function (error) {
-    const message =
-      (error.response && error.response.data && error.response.data.message) ||
-      'Something went wrong. Please try again.';
-    const details = (error.response && error.response.data && error.response.data.details) || null;
+  async function (error) {
+    let data = error.response ? error.response.data : null;
+
+    // Requests made with responseType 'blob' or 'arraybuffer' (e.g. the PDF
+    // preview) still get their error body delivered as a Blob/ArrayBuffer,
+    // even when the server sent a normal JSON error. Without decoding it
+    // here, every such failure silently fell back to the generic message
+    // below instead of the real "Note not found" / "Unauthorized" reason.
+    if (typeof Blob !== 'undefined' && data instanceof Blob) {
+      try {
+        data = JSON.parse(await data.text());
+      } catch (parseErr) {
+        data = null;
+      }
+    } else if (data instanceof ArrayBuffer) {
+      try {
+        data = JSON.parse(new TextDecoder('utf-8').decode(data));
+      } catch (parseErr) {
+        data = null;
+      }
+    }
+
+    const message = (data && data.message) || 'Something went wrong. Please try again.';
+    const details = (data && data.details) || null;
     return Promise.reject({
       status: error.response ? error.response.status : 0,
       message: message,
