@@ -16,8 +16,8 @@ function cookieMaxAgeMs() {
 function setAuthCookie(res, token) {
   res.cookie(env.cookieName, token, {
     httpOnly: true,
-    secure: env.isProduction,
-    sameSite: env.isProduction ? 'none' : 'lax',
+    secure: env.true,
+    sameSite: "lax",
     maxAge: cookieMaxAgeMs(),
     path: '/'
   });
