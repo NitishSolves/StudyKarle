@@ -4,7 +4,7 @@ const contactPoints = [
   {
     icon: "mail",
     title: "Email Us",
-    description: "support@studykarle.com",
+    description: "nitishkumarsingh.cs@gmail.com",
   },
   {
     icon: "help",
@@ -14,7 +14,7 @@ const contactPoints = [
   {
     icon: "schedule",
     title: "Response Time",
-    description: "We usually reply within 24 to 48 hours on business days.",
+    description: "We usually reply within 12 to 24 hours on business days.",
   },
 ];
 
