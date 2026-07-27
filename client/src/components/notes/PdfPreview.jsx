@@ -10,6 +10,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerSrc;
 
 const MIN_SCALE = 0.35;
 const MAX_SCALE = 3;
+const MAX_DEVICE_PIXEL_RATIO = 2;
 
 function canRenderPdfInBrowser() {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -18,8 +19,29 @@ function canRenderPdfInBrowser() {
   if (typeof Promise === 'undefined' || typeof Uint8Array === 'undefined') {
     return false;
   }
+
   const canvas = document.createElement('canvas');
   return !!(canvas && canvas.getContext && canvas.getContext('2d'));
+}
+
+function getPdfErrorMessage(error) {
+  if (!error) {
+    return 'Failed to load preview.';
+  }
+
+  if (error.name === 'InvalidPDFException') {
+    return 'This file is not a valid PDF.';
+  }
+
+  if (error.name === 'MissingPDFException') {
+    return 'This PDF file could not be found.';
+  }
+
+  if (error.name === 'UnexpectedResponseException') {
+    return 'Unable to fetch this PDF right now. Please try again.';
+  }
+
+  return error.message || 'Failed to load preview.';
 }
 
 export default function PdfPreview({ noteId, title }) {
@@ -28,18 +50,18 @@ export default function PdfPreview({ noteId, title }) {
   const [pdfDoc, setPdfDoc] = useState(null);
   const [numPages, setNumPages] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [containerWidth, setContainerWidth] = useState(0);
   const [pageRendering, setPageRendering] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
 
   const viewportRef = useRef(null);
   const canvasRef = useRef(null);
-  const renderTaskRef = useRef(null);
   const loadTaskRef = useRef(null);
+  const renderTaskRef = useRef(null);
 
   useEffect(
     function () {
-      let cancelled = false;
+      let active = true;
       const controller = new AbortController();
 
       if (!canRenderPdfInBrowser()) {
@@ -52,6 +74,17 @@ export default function PdfPreview({ noteId, title }) {
       setError(null);
       setNumPages(0);
       setCurrentPage(1);
+
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+        renderTaskRef.current = null;
+      }
+
+      if (loadTaskRef.current) {
+        loadTaskRef.current.destroy();
+        loadTaskRef.current = null;
+      }
+
       setPdfDoc(function (previousDoc) {
         if (previousDoc) {
           previousDoc.destroy();
@@ -59,22 +92,17 @@ export default function PdfPreview({ noteId, title }) {
         return null;
       });
 
-      if (renderTaskRef.current) {
-        renderTaskRef.current.cancel();
-        renderTaskRef.current = null;
-      }
-
       axiosClient
         .get('/notes/' + noteId + '/preview', {
           responseType: 'arraybuffer',
           signal: controller.signal
         })
-        .then(function (res) {
-          if (cancelled) {
+        .then(function (response) {
+          if (!active) {
             return null;
           }
 
-          const bytes = new Uint8Array(res.data);
+          const bytes = new Uint8Array(response.data || []);
           if (!bytes.length) {
             throw new Error('This file appears to be empty or unavailable.');
           }
@@ -91,29 +119,36 @@ export default function PdfPreview({ noteId, title }) {
           if (!doc) {
             return;
           }
-          if (cancelled) {
+
+          if (!active) {
             doc.destroy();
             return;
           }
 
           setPdfDoc(doc);
-          setNumPages(doc.numPages);
+          setNumPages(doc.numPages || 0);
         })
-        .catch(function (err) {
-          if (cancelled || err.name === 'CanceledError' || err.code === 'ERR_CANCELED') {
+        .catch(function (loadError) {
+          if (!active || loadError.name === 'CanceledError' || loadError.code === 'ERR_CANCELED') {
             return;
           }
-          setError(err.message || 'Failed to load preview');
+
+          setError(getPdfErrorMessage(loadError));
         })
         .finally(function () {
-          if (!cancelled) {
+          if (active) {
             setLoading(false);
           }
         });
 
       return function () {
-        cancelled = true;
+        active = false;
         controller.abort();
+
+        if (renderTaskRef.current) {
+          renderTaskRef.current.cancel();
+          renderTaskRef.current = null;
+        }
 
         if (loadTaskRef.current) {
           loadTaskRef.current.destroy();
@@ -125,76 +160,95 @@ export default function PdfPreview({ noteId, title }) {
   );
 
   useEffect(function () {
-    const el = viewportRef.current;
-    if (!el) {
+    const viewportElement = viewportRef.current;
+    if (!viewportElement) {
       return undefined;
     }
 
-    function measure() {
-      const width = el.clientWidth;
-      setContainerWidth(function (previousWidth) {
-        return Math.abs(previousWidth - width) > 1 ? width : previousWidth;
+    function updateSize() {
+      const nextWidth = viewportElement.clientWidth;
+      const nextHeight = viewportElement.clientHeight;
+
+      setViewportSize(function (previousSize) {
+        if (
+          Math.abs(previousSize.width - nextWidth) <= 1 &&
+          Math.abs(previousSize.height - nextHeight) <= 1
+        ) {
+          return previousSize;
+        }
+
+        return {
+          width: nextWidth,
+          height: nextHeight
+        };
       });
     }
 
-    measure();
+    updateSize();
 
     let observer;
     if (typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(function () {
-        measure();
-      });
-      observer.observe(el);
+      observer = new ResizeObserver(updateSize);
+      observer.observe(viewportElement);
     }
 
-    window.addEventListener('resize', measure);
-    window.addEventListener('orientationchange', measure);
+    window.addEventListener('resize', updateSize);
+    window.addEventListener('orientationchange', updateSize);
 
     return function () {
       if (observer) {
         observer.disconnect();
       }
-      window.removeEventListener('resize', measure);
-      window.removeEventListener('orientationchange', measure);
+      window.removeEventListener('resize', updateSize);
+      window.removeEventListener('orientationchange', updateSize);
     };
   }, []);
 
   useEffect(
     function () {
-      if (!pdfDoc || !containerWidth) {
+      if (!pdfDoc || !viewportSize.width || !viewportSize.height) {
         return undefined;
       }
 
-      let cancelled = false;
-      setPageRendering(true);
+      let active = true;
 
-      pdfDoc
-        .getPage(currentPage)
-        .then(function (page) {
-          if (cancelled) {
-            return null;
+      async function renderCurrentPage() {
+        setPageRendering(true);
+        setError(null);
+
+        try {
+          const page = await pdfDoc.getPage(currentPage);
+          if (!active) {
+            return;
           }
 
           const unscaledViewport = page.getViewport({ scale: 1 });
-          const fitScale = containerWidth / unscaledViewport.width;
+          const targetWidth = Math.max(viewportSize.width - 24, 1);
+          const targetHeight = Math.max(viewportSize.height - 24, 1);
+          const widthScale = targetWidth / unscaledViewport.width;
+          const heightScale = targetHeight / unscaledViewport.height;
+          const fitScale = Math.min(widthScale, heightScale);
           const scale = Math.min(Math.max(fitScale, MIN_SCALE), MAX_SCALE);
           const viewport = page.getViewport({ scale: scale });
 
           const canvas = canvasRef.current;
           if (!canvas) {
-            return null;
+            return;
           }
 
-          const context = canvas.getContext('2d');
+          const context = canvas.getContext('2d', { alpha: false });
           if (!context) {
             throw new Error('Preview canvas is not available in this browser.');
           }
 
-          const outputScale = window.devicePixelRatio || 1;
+          const outputScale = Math.min(window.devicePixelRatio || 1, MAX_DEVICE_PIXEL_RATIO);
           canvas.width = Math.floor(viewport.width * outputScale);
           canvas.height = Math.floor(viewport.height * outputScale);
           canvas.style.width = Math.floor(viewport.width) + 'px';
           canvas.style.height = Math.floor(viewport.height) + 'px';
+
+          context.setTransform(1, 0, 0, 1, 0, 0);
+          context.clearRect(0, 0, canvas.width, canvas.height);
 
           if (renderTaskRef.current) {
             renderTaskRef.current.cancel();
@@ -205,27 +259,47 @@ export default function PdfPreview({ noteId, title }) {
             viewport: viewport,
             transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null
           });
+
           renderTaskRef.current = renderTask;
-          return renderTask.promise;
-        })
-        .then(function () {
-          if (!cancelled) {
-            setPageRendering(false);
-          }
-        })
-        .catch(function (err) {
-          if (cancelled || (err && err.name === 'RenderingCancelledException')) {
+          await renderTask.promise;
+        } catch (renderError) {
+          if (!active || (renderError && renderError.name === 'RenderingCancelledException')) {
             return;
           }
-          setPageRendering(false);
-          setError(err.message || 'Failed to render this page.');
-        });
+
+          setError(getPdfErrorMessage(renderError));
+        } finally {
+          if (active) {
+            setPageRendering(false);
+          }
+        }
+      }
+
+      renderCurrentPage();
 
       return function () {
-        cancelled = true;
+        active = false;
+
+        if (renderTaskRef.current) {
+          renderTaskRef.current.cancel();
+          renderTaskRef.current = null;
+        }
       };
     },
-    [pdfDoc, currentPage, containerWidth]
+    [pdfDoc, currentPage, viewportSize.width, viewportSize.height]
+  );
+
+  useEffect(
+    function () {
+      if (!numPages) {
+        return;
+      }
+
+      setCurrentPage(function (page) {
+        return Math.min(Math.max(page, 1), numPages);
+      });
+    },
+    [numPages]
   );
 
   useEffect(function () {
@@ -248,9 +322,9 @@ export default function PdfPreview({ noteId, title }) {
     });
   }
 
-  function goToPage(next) {
+  function goToPage(nextPage) {
     setCurrentPage(function () {
-      return Math.min(Math.max(next, 1), numPages || 1);
+      return Math.min(Math.max(nextPage, 1), numPages || 1);
     });
   }
 
@@ -261,20 +335,23 @@ export default function PdfPreview({ noteId, title }) {
           <Spinner size="lg" label="Loading preview..." />
         </div>
       ) : error ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-white">
+        <div className="absolute inset-0 flex items-center justify-center bg-white p-4">
           <ErrorState message={error} onRetry={handleRetry} />
         </div>
       ) : (
         <React.Fragment>
-          <div ref={viewportRef} className="flex-1 overflow-auto flex items-start justify-center p-4">
-            {numPages ? (
-              <canvas
-                ref={canvasRef}
-                role="img"
-                aria-label={(title || 'Note preview') + ' - page ' + currentPage + ' of ' + numPages}
-                className="shadow-sm bg-white"
-              />
-            ) : null}
+          <div ref={viewportRef} className="relative flex-1 min-h-0 overflow-auto bg-surface-high">
+            <div className="min-w-full min-h-full flex items-center justify-center p-3 sm:p-4">
+              {numPages ? (
+                <canvas
+                  ref={canvasRef}
+                  role="img"
+                  aria-label={(title || 'Note preview') + ' - page ' + currentPage + ' of ' + numPages}
+                  className="block shadow-sm bg-white"
+                />
+              ) : null}
+            </div>
+
             {pageRendering ? (
               <div className="absolute inset-0 flex items-center justify-center bg-white/60">
                 <Spinner size="md" />
