@@ -8,10 +8,33 @@ function required(name, fallback) {
   return value;
 }
 
+function corsOrigins() {
+  // Comma-separated allowlist from the environment, falling back to the
+  // documented defaults. Credentialed requests (cookies) must never be
+  // served with Access-Control-Allow-Origin: *.
+  if (process.env.CORS_ORIGINS) {
+    return process.env.CORS_ORIGINS.split(",")
+      .map(function (s) {
+        return s.trim();
+      })
+      .filter(Boolean);
+  }
+  const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+  const origins = [clientUrl];
+  if (origins.indexOf("http://localhost:5173") === -1) {
+    origins.push("http://localhost:5173");
+  }
+  if (origins.indexOf("http://127.0.0.1:5173") === -1) {
+    origins.push("http://127.0.0.1:5173");
+  }
+  return origins;
+}
+
 module.exports = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: Number(process.env.PORT) || 5000,
   clientUrl: process.env.CLIENT_URL || "http://localhost:5173",
+  corsOrigins: corsOrigins(),
 
   jwtSecret: required("JWT_SECRET", "dev_secret_change_me"),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",

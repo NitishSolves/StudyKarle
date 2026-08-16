@@ -88,6 +88,13 @@ function isUserScoped(url) {
 }
 
 axiosClient.interceptors.request.use(function (config) {
+  // Mark every request as XHR. The backend rejects state-changing (POST/PUT/
+  // PATCH/DELETE) requests without this header — cross-site CSRF requests
+  // (forms, images, iframes) cannot set it, so this is the CSRF enforcement
+  // boundary. CORS alone is not sufficient protection.
+  config.headers = config.headers || {};
+  config.headers["X-Requested-With"] = "XMLHttpRequest";
+
   // Short-circuit repeat GETs straight from the in-memory cache.
   if (isCacheable(config)) {
     const key = buildCacheKey(config);
@@ -133,6 +140,42 @@ axiosClient.interceptors.response.use(
     if (config && (config.method || "get").toUpperCase() !== "GET") {
       cacheStore.clear();
     }
+
+    // Central session-expiry handling: a 401 from any protected endpoint
+    // (anything outside the auth flow) tells AuthContext to clear the cached
+    // user so ProtectedRoute bounces the visitor to /login. This keeps the
+    // behaviour consistent instead of scattering `window.location` checks.
+    const status = error.response ? error.response.status : 0;
+    const url = (config && config.url) || "";
+    if (status === 401 && url.indexOf("/auth/") === -1) {
+      window.dispatchEvent(new CustomEvent("studykarle:unauthorized"));
+    }
+
+    // For responseType: "blob" requests (downloads) the backend still returns
+    // JSON error bodies as a Blob — parse them so the UI shows the real
+    // message instead of a generic one.
+    if (
+      error.response &&
+      error.response.data &&
+      typeof error.response.data.text === "function"
+    ) {
+      return error.response.data.text().then(function (text) {
+        let parsed = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch (e) {
+          parsed = null;
+        }
+        return Promise.reject({
+          status: status,
+          message:
+            (parsed && parsed.message) ||
+            "Something went wrong. Please try again.",
+          details: (parsed && parsed.details) || null,
+        });
+      });
+    }
+
     const message =
       (error.response && error.response.data && error.response.data.message) ||
       "Something went wrong. Please try again.";
@@ -140,7 +183,7 @@ axiosClient.interceptors.response.use(
       (error.response && error.response.data && error.response.data.details) ||
       null;
     return Promise.reject({
-      status: error.response ? error.response.status : 0,
+      status: status,
       message: message,
       details: details,
     });

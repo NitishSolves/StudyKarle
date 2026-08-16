@@ -30,6 +30,9 @@ const DriveBrowsePage = lazy(function () {
 const DriveFilePage = lazy(function () {
   return import("./pages/DriveFilePage");
 });
+const DriveSharePage = lazy(function () {
+  return import("./pages/DriveSharePage");
+});
 const NotePreviewPage = lazy(function () {
   return import("./pages/NotePreviewPage");
 });
@@ -103,6 +106,8 @@ export default function App() {
         <Route path="/contact" element={<SuspenseRoute><ContactPage /></SuspenseRoute>} />
         <Route path="/privacy" element={<SuspenseRoute><PrivacyPage /></SuspenseRoute>} />
         <Route path="/terms" element={<SuspenseRoute><TermsPage /></SuspenseRoute>} />
+        {/* Public, token-gated share links (separate from the authenticated file page) */}
+        <Route path="/drive/share/:token" element={<SuspenseRoute><DriveSharePage /></SuspenseRoute>} />
       </Route>
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<SuspenseRoute><LoginPage /></SuspenseRoute>} />

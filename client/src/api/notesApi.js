@@ -1,4 +1,5 @@
 import axiosClient, { API_URL } from "./axiosClient";
+import downloadFromApi from "../utils/download";
 
 export function fetchNote(noteId) {
   return axiosClient.get("/notes/" + noteId).then(function (res) {
@@ -17,8 +18,11 @@ export function getPreviewUrl(noteId) {
   return API_URL + "/notes/" + noteId + "/preview";
 }
 
-export function getDownloadUrl(noteId) {
-  return API_URL + "/notes/" + noteId + "/download";
+// Download goes through the authenticated API layer (blob fetch) so the
+// session cookie is always attached and the protected backend URL is never the
+// browser's destination.
+export function downloadNoteFile(noteId) {
+  return downloadFromApi("/notes/" + noteId + "/download");
 }
 
 export function searchNotes(query, page, signal) {

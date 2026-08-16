@@ -8,7 +8,7 @@ module.exports = asyncHandler(async function authenticate(req, res, next) {
   const token = req.cookies ? req.cookies[env.cookieName] : null;
 
   if (!token) {
-    throw ApiError.unauthorized('You must be logged in to perform this action');
+    throw ApiError.unauthorized('Authentication required');
   }
 
   let payload;

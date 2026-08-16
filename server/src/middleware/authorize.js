@@ -8,7 +8,7 @@ module.exports = function authorize() {
       return next(ApiError.unauthorized('You must be logged in'));
     }
     if (allowedRoles.length > 0 && allowedRoles.indexOf(req.user.role) === -1) {
-      return next(ApiError.forbidden('You do not have permission to perform this action'));
+      return next(ApiError.forbidden('You are not authorized to access this resource'));
     }
     next();
   };

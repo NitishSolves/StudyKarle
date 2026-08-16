@@ -9,6 +9,13 @@ module.exports = function errorHandler(err, req, res, next) {
     logger.error('Unhandled error on ' + req.method + ' ' + req.originalUrl, err);
   }
 
+  // A file stream may already be mid-flight (headers sent) when a downstream
+  // error arrives — writing a JSON body then throws a second error. Terminate
+  // the response cleanly instead.
+  if (res.headersSent) {
+    return res.end();
+  }
+
   const body = {
     success: false,
     message: isOperational ? err.message : 'Something went wrong. Please try again.'

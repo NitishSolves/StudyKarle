@@ -11,9 +11,10 @@ import { formatBytes } from "../utils/formatBytes";
 import { formatDate } from "../utils/formatDate";
 import useFetch from "../hooks/useFetch";
 import { useToast } from "../context/ToastContext";
+import ShareModal from "../components/drive/ShareModal";
 import {
   fetchDriveFile,
-  getDriveDownloadUrl,
+  downloadDriveFile,
   getDrivePreviewUrl,
   checkDriveFileSaved,
   saveDriveFile,
@@ -38,6 +39,8 @@ export default function DriveFilePage() {
   const [saved, setSaved] = useState(false);
   const [savingBusy, setSavingBusy] = useState(false);
   const [savedChecked, setSavedChecked] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [downloadBusy, setDownloadBusy] = useState(false);
 
   useEffect(
     function () {
@@ -105,20 +108,30 @@ export default function DriveFilePage() {
       });
   }
 
-  function handleShare() {
-    const shareUrl = window.location.href;
-    if (navigator.share) {
-      navigator
-        .share({ title: node.name, url: shareUrl })
-        .catch(function () {});
-    } else {
-      navigator.clipboard.writeText(shareUrl);
-      toast.success("Link copied to clipboard");
-    }
+  function handleDownload() {
+    setDownloadBusy(true);
+    downloadDriveFile(nodeId)
+      .then(function (result) {
+        toast.success("Downloading " + (result.filename || "file"));
+      })
+      .catch(function (err) {
+        toast.error(err.message);
+      })
+      .finally(function () {
+        setDownloadBusy(false);
+      });
   }
 
   return (
     <AppShell>
+      <ShareModal
+        open={shareOpen}
+        onClose={function () {
+          setShareOpen(false);
+        }}
+        nodeId={nodeId}
+        fileName={node.name}
+      />
       <div className="flex items-center gap-3 mb-4">
         <button
           type="button"
@@ -152,7 +165,9 @@ export default function DriveFilePage() {
           <Button
             variant="secondary"
             icon="share"
-            onClick={handleShare}
+            onClick={function () {
+              setShareOpen(true);
+            }}
             className="flex-1 md:flex-none"
           >
             Share
@@ -167,14 +182,14 @@ export default function DriveFilePage() {
           >
             {saved ? "Saved" : "Save"}
           </Button>
-          <a
-            href={getDriveDownloadUrl(nodeId)}
+          <Button
+            icon="download"
+            onClick={handleDownload}
+            loading={downloadBusy}
             className="flex-1 md:flex-none"
           >
-            <Button icon="download" className="w-full md:w-auto">
-              Download
-            </Button>
-          </a>
+            Download
+          </Button>
         </div>
       </div>
 

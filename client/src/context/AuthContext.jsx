@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import * as authApi from "../api/authApi";
+import { invalidateCache } from "../api/axiosClient";
 
 const AuthContext = createContext(null);
 
@@ -35,6 +36,22 @@ export function AuthProvider({ children }) {
     },
     [loadUser]
   );
+
+  // Central 401/session-expiry handling. The axios interceptor dispatches this
+  // event whenever any protected endpoint returns 401, so an expired session
+  // clears the cached user (and the user-scoped axios cache) immediately.
+  // ProtectedRoute then redirects to /login instead of showing an error page
+  // or raw backend JSON.
+  useEffect(function () {
+    function handleUnauthorized() {
+      setUser(null);
+      invalidateCache();
+    }
+    window.addEventListener("studykarle:unauthorized", handleUnauthorized);
+    return function () {
+      window.removeEventListener("studykarle:unauthorized", handleUnauthorized);
+    };
+  }, []);
 
   const login = useCallback(function (payload) {
     return authApi.login(payload).then(function (data) {

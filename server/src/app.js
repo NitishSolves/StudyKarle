@@ -9,6 +9,7 @@ const env = require("./config/env");
 const routes = require("./routes/index"); // ← All routes: auth, notes, saved, search, admin, years
 const notFound = require("./middleware/notFound");
 const errorHandler = require("./middleware/errorHandler");
+const csrfProtection = require("./middleware/csrfProtection");
 
 const app = express();
 
@@ -18,8 +19,13 @@ const allowedOrigins = [
   "https://studykarle.me",
   "https://www.studykarle.me",
   "https://studykarle.vercel.app",
-  "https://studykarle-backend.onrender.com/",
 ];
+// Merge in the env-driven allowlist (avoids duplicating defaults).
+env.corsOrigins.forEach(function (origin) {
+  if (allowedOrigins.indexOf(origin) === -1) {
+    allowedOrigins.push(origin);
+  }
+});
 
 app.set("trust proxy", 1);
 
@@ -76,6 +82,7 @@ app.get("/api/health", function (req, res) {
   });
 });
 
+app.use("/api", csrfProtection); // CSRF: require X-Requested-With on non-GET /api requests
 app.use("/api", routes); // ← Mounts ALL routes: /api/auth, /api/notes, /api/admin, etc.
 
 app.use(notFound);

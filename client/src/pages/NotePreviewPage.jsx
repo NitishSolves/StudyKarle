@@ -9,7 +9,7 @@ import PageLoader from "../components/common/PageLoader";
 import { formatBytes } from "../utils/formatBytes";
 import { formatDate } from "../utils/formatDate";
 import useFetch from "../hooks/useFetch";
-import { fetchNote, getDownloadUrl } from "../api/notesApi";
+import { fetchNote, downloadNoteFile } from "../api/notesApi";
 import { saveNote, unsaveNote } from "../api/savedApi";
 import { useToast } from "../context/ToastContext";
 
@@ -38,6 +38,7 @@ export default function NotePreviewPage() {
 
   const [saved, setSaved] = useState(false);
   const [savingBusy, setSavingBusy] = useState(false);
+  const [downloadBusy, setDownloadBusy] = useState(false);
 
   useEffect(
     function () {
@@ -59,6 +60,21 @@ export default function NotePreviewPage() {
       })
       .finally(function () {
         setSavingBusy(false);
+      });
+  }
+
+  function handleDownload() {
+    if (!note) return;
+    setDownloadBusy(true);
+    downloadNoteFile(note.id)
+      .then(function (result) {
+        toast.success("Downloading " + (result.filename || "file"));
+      })
+      .catch(function (err) {
+        toast.error(err.message);
+      })
+      .finally(function () {
+        setDownloadBusy(false);
       });
   }
 
@@ -134,15 +150,15 @@ export default function NotePreviewPage() {
           >
             {saved ? "Saved" : "Save"}
           </Button>
-          <a
-            href={note ? getDownloadUrl(note.id) : undefined}
-            className={note ? "flex-1 md:flex-none" : "flex-1 md:flex-none pointer-events-none opacity-50"}
-            aria-disabled={!note}
+          <Button
+            icon="download"
+            onClick={handleDownload}
+            loading={downloadBusy}
+            disabled={!note}
+            className="w-full md:w-auto"
           >
-            <Button icon="download" className="w-full md:w-auto">
-              Download
-            </Button>
-          </a>
+            Download
+          </Button>
         </div>
       </div>
 
