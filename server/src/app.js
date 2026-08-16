@@ -31,35 +31,42 @@ app.set("trust proxy", 1);
 
 app.use(helmet());
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (mobile apps, curl, Postman)
-      if (!origin) return callback(null, true);
+// Single, strict CORS config shared by the global middleware and the
+// OPTIONS preflight fallback so both respond identically. Credentialed
+// requests (session cookie) require an exact origin match from the allowlist
+// below — never "*".
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
 
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS: " + origin));
-      }
-    },
-    credentials: true, // ✅ REQUIRED for cookies
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    // Expose caching / range headers so pdf.js can do partial (page-by-page)
-    // loading and the browser can cache PDF previews across origins.
-    exposedHeaders: [
-      "Content-Range",
-      "Accept-Ranges",
-      "Content-Length",
-      "ETag",
-      "Cache-Control",
-      "Last-Modified",
-    ],
-  })
-);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS: " + origin));
+    }
+  },
+  credentials: true, // REQUIRED for cookies
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  // Every header the StudyKarle client actually sends. X-Requested-With is the
+  // CSRF marker added by the axios interceptor; omitting it breaks preflight.
+  // Authorization is kept for any future bearer-token flow.
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  // Expose caching / range headers so pdf.js can do partial (page-by-page)
+  // loading and the browser can cache PDF previews across origins.
+  exposedHeaders: [
+    "Content-Range",
+    "Accept-Ranges",
+    "Content-Length",
+    "ETag",
+    "Cache-Control",
+    "Last-Modified",
+  ],
+};
 
-app.options("*", cors());
+app.use(cors(corsOptions));
+
+app.options("*", cors(corsOptions));
 
 // gzip/deflate all JSON API responses.
 app.use(compression());
