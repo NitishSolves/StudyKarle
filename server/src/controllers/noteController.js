@@ -1,6 +1,7 @@
 const noteModel = require("../models/noteModel");
 const viewHistoryModel = require("../models/viewHistoryModel");
 const driveService = require("../services/driveService");
+const pdfActivityService = require("../services/pdfActivityService");
 const asyncHandler = require("../middleware/asyncHandler");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
@@ -39,10 +40,14 @@ module.exports = {
     res.setHeader("Accept-Ranges", "bytes");
 
     if (req.headers["if-none-match"] === etag) {
+      await pdfActivityService.recordOpen(req.user.id, "note", String(note.id), note.title);
       return res.status(304).end();
     }
 
     await driveService.streamFile(note.drive_file_id, res, req.headers.range);
+    // Record AFTER the stream completes so the event reflects a real open.
+    // The service never rejects, so a logging failure can never break preview.
+    await pdfActivityService.recordOpen(req.user.id, "note", String(note.id), note.title);
   }),
 
   download: asyncHandler(async function (req, res) {
@@ -65,6 +70,9 @@ module.exports = {
     }
 
     await driveService.streamFile(note.drive_file_id, res, req.headers.range);
+    // Only record once the download stream succeeded. If the Drive stream
+    // throws, the error handler responds 500 and no download event is written.
+    await pdfActivityService.recordDownload(req.user.id, "note", String(note.id), note.title);
   }),
 };
 

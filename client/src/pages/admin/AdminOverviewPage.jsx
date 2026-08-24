@@ -1,22 +1,62 @@
 import React, { useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import AppShell from '../../components/layout/AppShell';
 import StatCard from '../../components/admin/StatCard';
 import NoteCard from '../../components/notes/NoteCard';
 import Button from '../../components/common/Button';
 import Skeleton from '../../components/common/Skeleton';
 import ErrorState from '../../components/common/ErrorState';
+import Modal from '../../components/common/Modal';
 import { formatBytes } from '../../utils/formatBytes';
-import { formatRelativeTime } from '../../utils/formatDate';
+import { formatRelativeTime, formatDateTime } from '../../utils/formatDate';
 import useFetch from '../../hooks/useFetch';
 import { useToast } from '../../context/ToastContext';
-import { fetchAdminStats, fetchDriveSyncStatus, triggerDriveSync } from '../../api/adminApi';
+import {
+  fetchAdminStats,
+  fetchDriveSyncStatus,
+  triggerDriveSync,
+  clearAdminPdfActivity,
+} from '../../api/adminApi';
+
+const ACTIVITY_VERBS = {
+  pdf_opened: 'opened',
+  pdf_downloaded: 'downloaded',
+  pdf_shared: 'shared',
+};
+
+// The PDF title opens the same preview route normal users use — the stable
+// Drive node id (/drive/file/:nodeId) or the legacy note id (/notes/:noteId).
+// If the resource was deleted since the event, we render its historical name
+// snapshot as plain text instead of a dead link.
+function ActivityPdfName({ item }) {
+  const previewRoute =
+    item.resourceType === 'note'
+      ? '/notes/' + item.pdfId
+      : '/drive/file/' + item.pdfId;
+
+  if (item.pdfExists) {
+    return (
+      <Link
+        to={previewRoute}
+        className="font-medium text-primary hover:underline"
+      >
+        {item.pdfName}
+      </Link>
+    );
+  }
+  return <span className="font-medium text-text-primary">{item.pdfName}</span>;
+}
 
 export default function AdminOverviewPage() {
   const { data: stats, loading, error, reload } = useFetch(fetchAdminStats, []);
   const toast = useToast();
   const [syncing, setSyncing] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const syncState = useFetch(fetchDriveSyncStatus, []);
+
+  const pdfActivity = (stats && stats.pdfActivity) || [];
 
   const handleSync = useCallback(
     function () {
@@ -51,8 +91,54 @@ export default function AdminOverviewPage() {
     [syncState, reload, toast]
   );
 
+  function handleClear() {
+    setClearing(true);
+    clearAdminPdfActivity()
+      .then(function () {
+        toast.success('Recent activity cleared');
+        setClearOpen(false);
+        reload();
+      })
+      .catch(function (err) {
+        toast.error(err.message || 'Failed to clear recent activity');
+      })
+      .finally(function () {
+        setClearing(false);
+      });
+  }
+
   return (
     <AppShell>
+      <Modal
+        open={clearOpen}
+        onClose={function () {
+          setClearOpen(false);
+        }}
+        title="Clear recent activity"
+      >
+        <p className="text-body-sm text-text-secondary">
+          Clear all recent activity? This action cannot be undone.
+        </p>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button
+            variant="secondary"
+            onClick={function () {
+              setClearOpen(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            icon="delete_sweep"
+            loading={clearing}
+            onClick={handleClear}
+          >
+            Clear
+          </Button>
+        </div>
+      </Modal>
+
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-stack-lg">
         <div>
           <h2 className="font-headline-lg text-headline-lg text-text-primary">Admin Dashboard</h2>
@@ -140,18 +226,42 @@ export default function AdminOverviewPage() {
             </div>
 
             <div className="bg-white rounded-xl border border-border-subtle p-6">
-              <h4 className="font-headline-md text-headline-md text-text-primary mb-4">Recent Activity</h4>
-              {stats.recentActivity.length === 0 ? (
-                <p className="text-body-sm text-text-muted">No activity recorded yet.</p>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h4 className="font-headline-md text-headline-md text-text-primary">
+                  Recent Activity
+                </h4>
+                {pdfActivity.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon="delete_sweep"
+                    onClick={function () {
+                      setClearOpen(true);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+              {pdfActivity.length === 0 ? (
+                <p className="text-body-sm text-text-muted">No recent activity.</p>
               ) : (
                 <ul className="space-y-3">
-                  {stats.recentActivity.map(function (activity) {
+                  {pdfActivity.map(function (activity) {
+                    const verb =
+                      ACTIVITY_VERBS[activity.activityType] ||
+                      activity.activityType;
                     return (
-                      <li key={activity.id} className="text-body-sm text-text-secondary border-b border-border-subtle last:border-0 pb-3 last:pb-0">
-                        <span className="font-medium text-text-primary">{activity.admin_name || 'Admin'}</span>{' '}
-                        {activity.action.replace('.', ' ')}
+                      <li
+                        key={activity.id}
+                        className="text-body-sm text-text-secondary border-b border-border-subtle last:border-0 pb-3 last:pb-0"
+                      >
+                        <span className="font-medium text-text-primary">
+                          {activity.userName || 'Unknown user'}
+                        </span>{' '}
+                        {verb} <ActivityPdfName item={activity} />
                         <span className="block text-text-muted text-[12px] mt-0.5">
-                          {formatRelativeTime(activity.created_at)}
+                          {formatDateTime(activity.createdAt)}
                         </span>
                       </li>
                     );

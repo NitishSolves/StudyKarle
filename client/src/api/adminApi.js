@@ -110,6 +110,20 @@ export function fetchAdminActivity(limit) {
     });
 }
 
+export function fetchAdminPdfActivity(limit) {
+  return axiosClient
+    .get("/admin/pdf-activity", { params: { limit: limit || 20 } })
+    .then(function (res) {
+      return res.data.data;
+    });
+}
+
+export function clearAdminPdfActivity() {
+  return axiosClient.delete("/admin/pdf-activity").then(function (res) {
+    return res.data.data;
+  });
+}
+
 export function fetchAdminViewHistory(limit) {
   return axiosClient
     .get("/admin/view-history", {

@@ -35,3 +35,22 @@ export function formatRelativeTime(value) {
   }
   return formatDate(value);
 }
+
+// Absolute date + time used by the Recent Activity dashboard, e.g.
+// "Aug 23, 2026 • 08:31 AM".
+export function formatDateTime(value) {
+  if (!value) {
+    return '';
+  }
+  const date = new Date(value);
+  const datePart = date.toLocaleDateString('en-US', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+  const timePart = date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  return datePart + ' • ' + timePart;
+}

@@ -28,6 +28,8 @@ router.use(authenticate, authorize("admin"), authenticatedActionLimiter);
 
 router.get("/stats", adminController.stats);
 router.get("/activity", adminController.activity);
+router.get("/pdf-activity", adminController.pdfActivity);
+router.delete("/pdf-activity", adminController.clearPdfActivity);
 router.get("/view-history", adminController.viewHistory);
 
 router.get("/drive-sync/status", adminController.driveSyncStatus);

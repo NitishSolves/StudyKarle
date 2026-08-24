@@ -6,6 +6,7 @@ const viewHistoryModel = require("../models/viewHistoryModel");
 const adminActivityModel = require("../models/adminActivityModel");
 const noteService = require("../services/noteService");
 const adminNoteService = require("../services/adminNoteService");
+const pdfActivityService = require("../services/pdfActivityService");
 const asyncHandler = require("../middleware/asyncHandler");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
@@ -18,6 +19,7 @@ module.exports = {
     const totalSizeBytes = await noteModel.sumSizeBytes();
     const recentUploads = await noteModel.findRecent(5);
     const recentActivity = await adminActivityModel.recent(10);
+    const pdfActivity = await pdfActivityService.recent(10);
 
     return ApiResponse.ok(res, {
       totalNotes: totalNotes,
@@ -26,6 +28,7 @@ module.exports = {
       totalSizeBytes: totalSizeBytes,
       recentUploads: recentUploads,
       recentActivity: recentActivity,
+      pdfActivity: pdfActivity,
     });
   }),
 
@@ -230,6 +233,21 @@ module.exports = {
     const limit = parseInt(req.query.limit, 10) || 30;
     const activity = await adminActivityModel.recent(limit);
     return ApiResponse.ok(res, activity);
+  }),
+
+  // User PDF activity (opened / downloaded / shared) for the Recent Activity
+  // dashboard. Admin-only via the admin router's authenticate+authorize.
+  pdfActivity: asyncHandler(async function (req, res) {
+    const limit = parseInt(req.query.limit, 10) || 20;
+    const activity = await pdfActivityService.recent(limit);
+    return ApiResponse.ok(res, activity);
+  }),
+
+  // Clears ONLY the pdf_activity rows backing the Recent Activity dashboard.
+  // Security/audit logs (admin_activity, view_history) are never touched.
+  clearPdfActivity: asyncHandler(async function (req, res) {
+    const deleted = await pdfActivityService.clear();
+    return ApiResponse.ok(res, { cleared: true, deleted: deleted });
   }),
 
   // ─── Google Drive sync ───

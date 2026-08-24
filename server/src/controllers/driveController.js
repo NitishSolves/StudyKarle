@@ -19,6 +19,7 @@ const driveNodeModel = require("../models/driveNodeModel");
 const driveShareModel = require("../models/driveShareModel");
 const driveShareService = require("../services/driveShareService");
 const driveService = require("../services/driveService");
+const pdfActivityService = require("../services/pdfActivityService");
 const asyncHandler = require("../middleware/asyncHandler");
 const ApiResponse = require("../utils/ApiResponse");
 const ApiError = require("../utils/ApiError");
@@ -42,12 +43,19 @@ module.exports = {
 
   preview: asyncHandler(async function (req, res) {
     const node = await requireLibraryFile(req);
-    return streamFileNode(node, res, req, "inline");
+    await streamFileNode(node, res, req, "inline");
+    // Record AFTER the stream completes (or a cached 304 is served) so the
+    // event reflects a real open. The service never rejects, so a logging
+    // failure can never break the preview.
+    await pdfActivityService.recordOpen(req.user.id, "drive", node.drive_id, node.name);
   }),
 
   download: asyncHandler(async function (req, res) {
     const node = await requireLibraryFile(req);
-    return streamFileNode(node, res, req, "attachment");
+    await streamFileNode(node, res, req, "attachment");
+    // Only record once the download stream succeeded. If the Drive stream
+    // throws, the error handler responds 500 and no download event is written.
+    await pdfActivityService.recordDownload(req.user.id, "drive", node.drive_id, node.name);
   }),
 
   // ----------------------------------------------------------------
@@ -67,7 +75,7 @@ module.exports = {
   }),
 
   createShare: asyncHandler(async function (req, res) {
-    await requireLibraryFile(req);
+    const node = await requireLibraryFile(req);
 
     const permission = req.body && req.body.permission;
     if (permission !== undefined && ["preview", "download"].indexOf(permission) === -1) {
@@ -88,6 +96,10 @@ module.exports = {
       permission: permission || "download",
       expiresInDays: expiresInDays,
     });
+
+    // Only after the share link is actually created — opening the share
+    // dialog is not a share.
+    await pdfActivityService.recordShare(req.user.id, "drive", node.drive_id, node.name);
 
     return ApiResponse.created(res, share);
   }),
